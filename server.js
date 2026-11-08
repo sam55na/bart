@@ -50,8 +50,7 @@ const TABLE_SCHEMAS = {
             amount DECIMAL(20,2) NOT NULL DEFAULT 0,
             icon VARCHAR(50),
             image_url TEXT,
-            back_image_url TEXT,
-            probability DECIMAL(5,2) NOT NULL DEFAULT 25,
+            probability DECIMAL(5,2) NOT NULL DEFAULT 0,
             color VARCHAR(50) DEFAULT '#1a1a2e',
             color2 VARCHAR(50) DEFAULT '#16213e',
             is_active BOOLEAN DEFAULT TRUE,
@@ -110,9 +109,9 @@ const TABLE_SCHEMAS = {
 
 const DEFAULT_PRIZES = [
     { name: '💎 جائزة 1000 SYP', description: 'فوز بـ 1000 ليرة سورية', amount: 1000, icon: '💎', probability: 10, color: '#1a1a2e', color2: '#16213e' },
-    { name: '🎁 جائزة 500 SYP', description: 'فوز بـ 500 ليرة سورية', amount: 500, icon: '🎁', probability: 20, color: '#2d1b3d', color2: '#1a0a0a' },
-    { name: '⭐ جائزة 200 SYP', description: 'فوز بـ 200 ليرة سورية', amount: 200, icon: '⭐', probability: 30, color: '#0f3460', color2: '#1a1a2e' },
-    { name: '🎫 جائزة 100 SYP', description: 'فوز بـ 100 ليرة سورية', amount: 100, icon: '🎫', probability: 40, color: '#1a2a1a', color2: '#0f1a0f' }
+    { name: '🎁 جائزة 500 SYP',  description: 'فوز بـ 500 ليرة سورية',  amount: 500,  icon: '🎁', probability: 20, color: '#2d1b3d', color2: '#1a0a0a' },
+    { name: '⭐ جائزة 200 SYP',  description: 'فوز بـ 200 ليرة سورية',  amount: 200,  icon: '⭐', probability: 30, color: '#0f3460', color2: '#1a1a2e' },
+    { name: '🎫 جائزة 100 SYP',  description: 'فوز بـ 100 ليرة سورية',  amount: 100,  icon: '🎫', probability: 40, color: '#1a2a1a', color2: '#0f1a0f' }
 ];
 
 const DEFAULT_SETTINGS = [
@@ -121,11 +120,12 @@ const DEFAULT_SETTINGS = [
     { key: 'deposit_required', value: 'false' },
     { key: 'deposit_min_amount', value: '1000' },
     { key: 'deposit_check_hours', value: '24' },
-    { key: 'back_image_url', value: 'https://via.placeholder.com/300x400/1a1a2e/FFD700?text=?' },
+    { key: 'back_image_url', value: '' },
     { key: 'bg_image_url', value: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=1920&q=80' },
     { key: 'loading_image_url', value: 'https://via.placeholder.com/200/1a1a2e/FFD700?text=🎴' },
     { key: 'max_flips', value: '5' },
-    { key: 'flip_duration', value: '600' }
+    { key: 'flip_duration', value: '600' },
+    { key: 'game_title', value: 'JAK BOT BARTON' }
 ];
 
 // ================================================================
@@ -135,22 +135,17 @@ async function updateTableSchema() {
     const client = await pool.connect();
     try {
         console.log('📋 التحقق من هيكل الجداول...');
-        
+
         const checkColumns = await client.query(`
             SELECT column_name FROM information_schema.columns 
             WHERE table_name = 'card_prizes' 
-            AND column_name IN ('image_url', 'back_image_url', 'amount', 'color', 'color2')
+            AND column_name IN ('image_url', 'amount', 'color', 'color2')
         `);
-        
         const existing = checkColumns.rows.map(r => r.column_name);
-        
+
         if (!existing.includes('image_url')) {
             await client.query(`ALTER TABLE card_prizes ADD COLUMN image_url TEXT`);
             console.log('✅ إضافة image_url');
-        }
-        if (!existing.includes('back_image_url')) {
-            await client.query(`ALTER TABLE card_prizes ADD COLUMN back_image_url TEXT`);
-            console.log('✅ إضافة back_image_url');
         }
         if (!existing.includes('amount')) {
             await client.query(`ALTER TABLE card_prizes ADD COLUMN amount DECIMAL(20,2) DEFAULT 0`);
@@ -164,7 +159,7 @@ async function updateTableSchema() {
             await client.query(`ALTER TABLE card_prizes ADD COLUMN color2 VARCHAR(50) DEFAULT '#16213e'`);
             console.log('✅ إضافة color2');
         }
-        
+
         return true;
     } catch (error) {
         console.error('❌ خطأ في التحديث:', error);
@@ -190,7 +185,7 @@ async function ensureTables() {
                 return false;
             }
         }
-        
+
         await updateTableSchema();
 
         const prizesCount = await client.query('SELECT COUNT(*) FROM card_prizes');
@@ -216,7 +211,7 @@ async function ensureTables() {
 
         const bannerCount = await client.query('SELECT COUNT(*) FROM card_banner');
         if (parseInt(bannerCount.rows[0].count) === 0) {
-            await client.query(`INSERT INTO card_banner (text) VALUES ($1)`, ['🎴 JAK BOT BARTON']);
+            await client.query(`INSERT INTO card_banner (text) VALUES ($1)`, ['JAK BOT BARTON']);
         }
 
         console.log('\n✅ قاعدة البيانات جاهزة!');
@@ -242,7 +237,23 @@ function checkAdmin(req, res, next) {
 }
 
 // ================================================================
-//                      المسارات
+//                      دوال مساعدة
+// ================================================================
+async function getSetting(key, defaultValue) {
+    const r = await pool.query('SELECT setting_value FROM card_settings WHERE setting_key = $1', [key]);
+    return r.rows[0]?.setting_value ?? defaultValue;
+}
+
+function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+// ================================================================
+//                      المسارات الأساسية
 // ================================================================
 
 app.get('/api/status', (req, res) => {
@@ -257,7 +268,7 @@ app.get('/', (req, res) => {
 app.get('/api/banner', async (req, res) => {
     try {
         const r = await pool.query('SELECT text FROM card_banner ORDER BY id DESC LIMIT 1');
-        res.json({ success: true, text: r.rows[0]?.text || '🎴 JAK BOT BARTON' });
+        res.json({ success: true, text: r.rows[0]?.text || 'JAK BOT BARTON' });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -276,14 +287,16 @@ app.get('/api/prizes', async (req, res) => {
     }
 });
 
-// -------------------- إعدادات الأدمن --------------------
+// ================================================================
+//                      إعدادات الأدمن
+// ================================================================
 app.get('/api/admin/settings', checkAdmin, async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM card_settings');
         const settings = {};
         r.rows.forEach(row => { settings[row.setting_key] = row.setting_value; });
         const b = await pool.query('SELECT text FROM card_banner ORDER BY id DESC LIMIT 1');
-        settings.banner_text = b.rows[0]?.text || '🎴 JAK BOT BARTON';
+        settings.banner_text = b.rows[0]?.text || 'JAK BOT BARTON';
         res.json({ success: true, settings });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
@@ -309,7 +322,9 @@ app.put('/api/admin/setting', checkAdmin, async (req, res) => {
     }
 });
 
-// -------------------- إدارة الجوائز --------------------
+// ================================================================
+//                      إدارة الجوائز
+// ================================================================
 app.get('/api/admin/prizes', checkAdmin, async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM card_prizes ORDER BY id ASC');
@@ -320,16 +335,15 @@ app.get('/api/admin/prizes', checkAdmin, async (req, res) => {
 });
 
 app.post('/api/admin/prizes', checkAdmin, async (req, res) => {
-    const { name, description, amount, icon, image_url, back_image_url, probability, color, color2 } = req.body;
+    const { name, description, amount, icon, image_url, probability, color, color2 } = req.body;
     if (!name) return res.status(400).json({ success: false, error: 'Name required' });
     try {
         const r = await pool.query(`
-            INSERT INTO card_prizes (name, description, amount, icon, image_url, back_image_url, probability, color, color2, is_active)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true) RETURNING *
+            INSERT INTO card_prizes (name, description, amount, icon, image_url, probability, color, color2, is_active)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true) RETURNING *
         `, [
             name, description || '', parseFloat(amount) || 0, icon || '🎴',
-            image_url || null, back_image_url || null,
-            parseFloat(probability) || 25,
+            image_url || null, parseFloat(probability) || 0,
             color || '#1a1a2e', color2 || '#16213e'
         ]);
         res.json({ success: true, prize: r.rows[0] });
@@ -341,7 +355,7 @@ app.post('/api/admin/prizes', checkAdmin, async (req, res) => {
 app.put('/api/admin/prizes/:id', checkAdmin, async (req, res) => {
     const { id } = req.params;
     const fields = req.body;
-    const allowed = ['name', 'description', 'amount', 'icon', 'image_url', 'back_image_url', 'probability', 'color', 'color2', 'is_active'];
+    const allowed = ['name', 'description', 'amount', 'icon', 'image_url', 'probability', 'color', 'color2', 'is_active'];
     const updates = [];
     const values = [];
     let idx = 1;
@@ -417,15 +431,8 @@ app.post('/api/admin/reset-games', checkAdmin, async (req, res) => {
 });
 
 // ================================================================
-//                      🎴 منطق اللعبة الأساسي
+//                      🎴 بدء اللعبة
 // ================================================================
-async function getSetting(key, defaultValue) {
-    const r = await pool.query('SELECT setting_value FROM card_settings WHERE setting_key = $1', [key]);
-    return r.rows[0]?.setting_value ?? defaultValue;
-}
-
-// -------------------- بدء لعبة جديدة --------------------
-// يختار الجائزة على الخادم (Weighted Random) ويُرجع معرّف جولة
 app.post('/api/game/start', async (req, res) => {
     const { user_id } = req.body;
 
@@ -488,58 +495,113 @@ app.post('/api/game/start', async (req, res) => {
             }
         }
 
-        // 4. اختيار الجائزة الفائزة (Weighted Random)
+        // 4. جلب الجوائز النشطة
         const prizes = await pool.query('SELECT * FROM card_prizes WHERE is_active = true');
         if (prizes.rows.length === 0) {
             return res.status(500).json({ success: false, error: 'لا توجد جوائز متاحة' });
         }
 
-        const totalProb = prizes.rows.reduce((s, p) => s + parseFloat(p.probability), 0);
-        let rand = Math.random() * totalProb;
-        let winningPrize = prizes.rows[0];
-        for (const p of prizes.rows) {
-            if (rand <= parseFloat(p.probability)) { winningPrize = p; break; }
-            rand -= parseFloat(p.probability);
+        // 5. حساب مجموع الاحتمالات
+        const totalProb = prizes.rows.reduce((s, p) => s + parseFloat(p.probability || 0), 0);
+
+        if (totalProb <= 0) {
+            return res.status(500).json({ success: false, error: 'كل الجوائز معطلة (احتمال 0%)' });
         }
 
-        // 5. إرجاع بيانات الجولة (بدون كشف الجائزة)
+        // 6. الاختيار: رابح أم خاسر؟
+        // إذا مجموع الاحتمالات < 100 → الباقي فرصة خسارة
+        // إذا مجموع الاحتمالات >= 100 → لا خسارة (نُطبّع الاحتمالات)
+        const loseChance = Math.max(0, 100 - totalProb);
+        const roll = Math.random() * Math.max(100, totalProb);
+
+        let winningPrize = null;
+        let isLosingRound = false;
+
+        if (roll < loseChance) {
+            // ❌ خسارة
+            isLosingRound = true;
+            console.log(`🎲 خسارة! (roll=${roll.toFixed(2)} < loseChance=${loseChance.toFixed(2)})`);
+        } else {
+            // ✅ فوز — عشوائي موزون
+            let rand = roll - loseChance;
+            let cumulative = 0;
+            for (const p of prizes.rows) {
+                const prob = parseFloat(p.probability || 0);
+                if (prob <= 0) continue;
+                cumulative += prob;
+                if (rand < cumulative) {
+                    winningPrize = p;
+                    break;
+                }
+            }
+            // احتياطي
+            if (!winningPrize) {
+                winningPrize = prizes.rows.filter(p => parseFloat(p.probability || 0) > 0).pop();
+            }
+            console.log(`🎯 فوز! الجائزة: ${winningPrize?.name} (roll=${roll.toFixed(2)})`);
+        }
+
+        // 7. إعدادات
         const maxFlips = parseInt(await getSetting('max_flips', '5'));
         const flipDuration = parseInt(await getSetting('flip_duration', '600'));
 
-        // ملاحظة: نُعيد الجائزة فقط في "matching target" لتتمكن الواجهة من مطابقة البطاقات
-        // لكن بدون إظهارها قبل الوقت المناسب — الواجهة تختار 3 بطاقات عشوائية لتكون مطابقة لهذه الجائزة
-        res.json({
-            success: true,
-            game: {
-                prize_id: winningPrize.id,
-                prize_name: winningPrize.name,
-                // نُرسل بيانات الرمز فقط (بدون صورة/اسم) ليمكن مطابقة البطاقات
-                prize_icon: winningPrize.icon,
-                prize_image_url: winningPrize.image_url,
-                // ⚠️ لا نُرسل amount ولا description قبل الفوز
-                max_flips: maxFlips,
-                flip_duration: flipDuration
-            }
-        });
+        // 8. الرد
+        if (isLosingRound) {
+            res.json({
+                success: true,
+                game: {
+                    is_losing_round: true,
+                    prize_id: null,
+                    prize_name: '😅 حظ أوفر',
+                    prize_icon: '😅',
+                    prize_image_url: null,
+                    max_flips: maxFlips,
+                    flip_duration: flipDuration
+                }
+            });
+        } else {
+            res.json({
+                success: true,
+                game: {
+                    is_losing_round: false,
+                    prize_id: winningPrize.id,
+                    prize_name: winningPrize.name,
+                    prize_icon: winningPrize.icon,
+                    prize_image_url: winningPrize.image_url,
+                    max_flips: maxFlips,
+                    flip_duration: flipDuration
+                }
+            });
+        }
     } catch (e) {
         console.error('❌ start game error:', e);
         res.status(500).json({ success: false, error: e.message });
     }
 });
 
-// -------------------- إنهاء اللعبة (فوز/خسارة) --------------------
+// ================================================================
+//                      🎴 إنهاء اللعبة
+// ================================================================
 app.post('/api/game/finish', async (req, res) => {
     const { user_id, prize_id, matched, cards_flipped } = req.body;
 
-    if (!user_id || !prize_id) return res.status(400).json({ success: false, error: 'Missing fields' });
+    if (!user_id) return res.status(400).json({ success: false, error: 'Missing user_id' });
 
     try {
-        const prize = await pool.query('SELECT * FROM card_prizes WHERE id = $1', [prize_id]);
-        if (prize.rows.length === 0) return res.status(404).json({ success: false, error: 'Prize not found' });
-
-        const p = prize.rows[0];
         const isWin = matched === true;
-        const amountWon = isWin ? parseFloat(p.amount) : 0;
+        let prizeData = null;
+        let amountWon = 0;
+        let prizeName = '😅 حظ أوفر';
+
+        if (isWin && prize_id) {
+            const prize = await pool.query('SELECT * FROM card_prizes WHERE id = $1', [prize_id]);
+            if (prize.rows.length === 0) {
+                return res.status(404).json({ success: false, error: 'Prize not found' });
+            }
+            prizeData = prize.rows[0];
+            amountWon = parseFloat(prizeData.amount);
+            prizeName = prizeData.name;
+        }
 
         const r = await pool.query(`
             INSERT INTO card_games (user_id, status, prize_id, prize_name, prize_amount, cards_flipped, matched, is_claimed)
@@ -548,14 +610,13 @@ app.post('/api/game/finish', async (req, res) => {
         `, [
             user_id,
             isWin ? 'won' : 'lost',
-            p.id,
-            isWin ? p.name : 'خسارة',
+            isWin ? prize_id : null,
+            prizeName,
             amountWon,
             parseInt(cards_flipped) || 0,
             isWin
         ]);
 
-        // إحصائيات
         const stats = await pool.query(`
             SELECT 
                 COUNT(*) as total_games,
@@ -564,21 +625,20 @@ app.post('/api/game/finish', async (req, res) => {
             FROM card_games WHERE user_id = $1
         `, [user_id]);
 
-        // فترة التبريد القادمة
         const intervalHours = parseInt(await getSetting('spin_interval_hours', '24'));
 
         res.json({
             success: true,
             result: {
                 won: isWin,
-                prize: isWin ? {
-                    name: p.name,
-                    description: p.description,
-                    amount: parseFloat(p.amount),
-                    icon: p.icon,
-                    image_url: p.image_url,
-                    color: p.color,
-                    color2: p.color2
+                prize: isWin && prizeData ? {
+                    name: prizeData.name,
+                    description: prizeData.description,
+                    amount: parseFloat(prizeData.amount),
+                    icon: prizeData.icon,
+                    image_url: prizeData.image_url,
+                    color: prizeData.color,
+                    color2: prizeData.color2
                 } : null,
                 game_id: r.rows[0].id,
                 game_date: r.rows[0].game_date
@@ -596,7 +656,9 @@ app.post('/api/game/finish', async (req, res) => {
     }
 });
 
-// -------------------- حالة المستخدم --------------------
+// ================================================================
+//                      حالة المستخدم
+// ================================================================
 app.get('/api/game/status/:user_id', async (req, res) => {
     const { user_id } = req.params;
     if (!dbReady) return res.status(503).json({ success: false, error: 'DB not ready' });
@@ -622,7 +684,6 @@ app.get('/api/game/status/:user_id', async (req, res) => {
             }
         }
 
-        // شرط الإيداع
         const depositRequired = await getSetting('deposit_required', 'false');
         let depositInfo = null;
         if (depositRequired === 'true') {
