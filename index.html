@@ -660,7 +660,6 @@ let USER_ID = null;
 let settingsCache = {};
 let prizesCache = [];
 let currentPrize = null;
-let gameCards = [];
 let revealedStates = [];
 let matchedStates = [];
 let flipsUsed = 0;
@@ -671,6 +670,10 @@ let busy = false;
 let flipDuration = 600;
 let ambienceEnabled = true;
 let soundEnabled = true;
+
+// ============ حالة اللعبة الديناميكية ============
+let cardsData = [];        // بيانات كل بطاقة (تُحدد عند القلب)
+let symbolCounts = {};     // {prizeId: عدد_مرات_الظهور}
 
 // ================================================================
 //                      ConnectionManager
@@ -811,28 +814,20 @@ class BackgroundAmbience {
         this.nodes = [];
         this.masterGain = null;
     }
-
-    init(ctx) {
-        this.audioContext = ctx;
-    }
-
+    init(ctx) { this.audioContext = ctx; }
     start() {
         if (this.isPlaying || !this.audioContext) return;
         if (!ambienceEnabled || !soundEnabled) return;
         try {
             const ctx = this.audioContext;
-            // استئناف السياق إذا كان معلّقاً (متصفحات حديثة)
             if (ctx.state === 'suspended') ctx.resume();
-
             const now = ctx.currentTime;
 
-            // Master gain خافت جداً
             this.masterGain = ctx.createGain();
             this.masterGain.gain.setValueAtTime(0, now);
             this.masterGain.gain.linearRampToValueAtTime(0.035, now + 1.5);
             this.masterGain.connect(ctx.destination);
 
-            // === طبقة 1: نغمة منخفضة ثابتة (A2) ===
             const drone1 = ctx.createOscillator();
             const drone1Gain = ctx.createGain();
             drone1.type = 'sine';
@@ -842,7 +837,6 @@ class BackgroundAmbience {
             drone1Gain.connect(this.masterGain);
             drone1.start(now);
 
-            // === طبقة 2: نغمة خامسة (E3) ===
             const drone2 = ctx.createOscillator();
             const drone2Gain = ctx.createGain();
             drone2.type = 'sine';
@@ -852,7 +846,6 @@ class BackgroundAmbience {
             drone2Gain.connect(this.masterGain);
             drone2.start(now);
 
-            // === طبقة 3: تذبذب خفيف (LFO) ===
             const lfo = ctx.createOscillator();
             const lfoGain = ctx.createGain();
             lfo.type = 'sine';
@@ -862,7 +855,6 @@ class BackgroundAmbience {
             lfoGain.connect(drone1Gain.gain);
             lfo.start(now);
 
-            // === طبقة 4: نغمة عالية خافتة (E4) ===
             const drone3 = ctx.createOscillator();
             const drone3Gain = ctx.createGain();
             drone3.type = 'triangle';
@@ -878,19 +870,16 @@ class BackgroundAmbience {
             console.warn('Ambience start error:', e);
         }
     }
-
     stop() {
         if (!this.isPlaying) return;
         try {
             const ctx = this.audioContext;
             const now = ctx.currentTime;
-
             if (this.masterGain) {
                 this.masterGain.gain.cancelScheduledValues(now);
                 this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
                 this.masterGain.gain.linearRampToValueAtTime(0, now + 0.8);
             }
-
             setTimeout(() => {
                 this.nodes.forEach(node => {
                     try { node.stop(); } catch (e) {}
@@ -905,7 +894,6 @@ class BackgroundAmbience {
         }
     }
 }
-
 const backgroundAmbience = new BackgroundAmbience();
 
 // ================================================================
@@ -935,162 +923,72 @@ function getUserId() {
 }
 
 // ================================================================
-//                      🃏 بناء الـ deck — النسخة الذكية
+//                      🎲 اختيار رمز البطاقة ديناميكياً
 // ================================================================
-function buildDeck() {
+function pickSymbolForNextCard() {
     const isLosing = currentPrize.is_losing_round === true;
-    const allPrizes = prizesCache;
+    const flipsRemaining = maxFlips - flipsUsed;  // قبل زيادة العداد (5 عند البداية)
 
-    if (allPrizes.length === 0) {
-        throw new Error('لا توجد جوائز متاحة');
-    }
+    if (isLosing) {
+        // ============================================================
+        // ❌ جولة خاسرة — لا يجب أن يصل المستخدم لـ 3 تطابقات
+        // ============================================================
+        // استبعد أي رمز ظهر مرتين (لأن الثالثة = فوز)
+        const availablePrizes = prizesCache.filter(p => {
+            return (symbolCounts[p.id] || 0) < 2;
+        });
 
-    const deck = new Array(CARD_COUNT);
+        if (availablePrizes.length === 0) {
+            // طارئ (احتمال شبه معدوم): كل الرموز ظهرت مرتين
+            // نستخدم أي رمز (لكن هذا لن يحدث مع 5 قلبات)
+            console.warn('⚠️ كل الرموز وصلت للحد الأقصى');
+            return prizesCache[Math.floor(Math.random() * prizesCache.length)];
+        }
 
-    // اختيار 4 رموز "للتوزيع" (4 × 3 = 12 بطاقة)
-    let symbolsForCards;
-
-    if (!isLosing) {
+        return availablePrizes[Math.floor(Math.random() * availablePrizes.length)];
+    } else {
+        // ============================================================
+        // ✅ جولة رابحة — يجب أن يصل المستخدم لـ 3 من الجائزة الفائزة
+        // ============================================================
         const winningPrize = prizesCache.find(p => p.id === currentPrize.prize_id);
-        if (!winningPrize) throw new Error('الجائزة الفائزة غير موجودة');
+        if (!winningPrize) return prizesCache[0];
 
+        const winningShown = symbolCounts[winningPrize.id] || 0;
+        const needMore = MATCH_REQUIRED - winningShown;  // كم مرة أخرى نحتاج
+        const remainingAfterThis = flipsRemaining - 1;   // القلبات المتبقية بعد هذه
+
+        // إذا احتجنا "needMore" أكثر من أو يساوي القلبات المتبقية → إجباري
+        const mustShowWinning = needMore > 0 && needMore >= flipsRemaining;
+
+        if (mustShowWinning) {
+            return winningPrize;
+        }
+
+        // احتمال إظهار الفائز
+        let probability = needMore > 0 ? needMore / Math.max(1, flipsRemaining) : 0;
+
+        // تعزيز الاحتمال في القلبات الأخيرة
+        if (flipsRemaining === 2 && needMore >= 2) probability = 0.7;
+        if (flipsRemaining === 3 && needMore >= 2) probability = 0.5;
+
+        if (Math.random() < probability) {
+            return winningPrize;
+        }
+
+        // اختر رمزاً آخر (ليس الفائز)
         const otherPrizes = prizesCache.filter(p => p.id !== winningPrize.id);
-        shuffleArray(otherPrizes);
-        symbolsForCards = [winningPrize, ...otherPrizes.slice(0, 3)];
+        if (otherPrizes.length === 0) return winningPrize;
 
-        while (symbolsForCards.length < 4) {
-            symbolsForCards.push(otherPrizes[symbolsForCards.length % otherPrizes.length]);
-        }
-    } else {
-        const shuffled = [...prizesCache];
-        shuffleArray(shuffled);
-        symbolsForCards = shuffled.slice(0, 4);
-        while (symbolsForCards.length < 4) {
-            symbolsForCards.push(shuffled[symbolsForCards.length % shuffled.length]);
-        }
+        // تجنب ظهور أي رمز آخر 3 مرات
+        const filteredOthers = otherPrizes.filter(p => (symbolCounts[p.id] || 0) < 3);
+        const pool = filteredOthers.length > 0 ? filteredOthers : otherPrizes;
+        return pool[Math.floor(Math.random() * pool.length)];
     }
-
-    // كل رمز يظهر 3 مرات = 12 بطاقة
-    const allCards = [];
-    symbolsForCards.forEach(prize => {
-        for (let i = 0; i < 3; i++) allCards.push({ ...prize });
-    });
-
-    shuffleArray(allCards);
-
-    if (!isLosing) {
-        // ============ جولة رابحة: 3 بطاقات فائزة ضمن أول 5 مواقع ============
-        const winningId = currentPrize.prize_id;
-
-        const winningPositions = [];
-        allCards.forEach((card, idx) => {
-            if (card.id === winningId) winningPositions.push(idx);
-        });
-
-        // اختر 3 مواقع عشوائية من [0,1,2,3,4]
-        const firstFive = shuffleArray([0, 1, 2, 3, 4]);
-        const targetWinPositions = firstFive.slice(0, 3);
-
-        const finalDeck = new Array(CARD_COUNT);
-        const winningCard = { ...allCards[winningPositions[0]] };
-        targetWinPositions.forEach(pos => {
-            finalDeck[pos] = { ...winningCard };
-        });
-
-        const remainingCards = [];
-        let winRemoved = 0;
-        allCards.forEach(card => {
-            if (card.id === winningId && winRemoved < 3) {
-                winRemoved++;
-                return;
-            }
-            remainingCards.push(card);
-        });
-
-        shuffleArray(remainingCards);
-        let remIdx = 0;
-        for (let i = 0; i < CARD_COUNT; i++) {
-            if (!finalDeck[i]) finalDeck[i] = remainingCards[remIdx++];
-        }
-
-        gameCards = finalDeck;
-        console.log('✅ Deck رابح:', gameCards.map(c => c.id), '| الفائز:', winningId);
-    } else {
-        // ============ جولة خاسرة: لا 3 تطابقات في أول 5 ============
-        let attempts = 0;
-        let finalDeck = [...allCards];
-
-        while (attempts < 200) {
-            shuffleArray(finalDeck);
-
-            const firstFive = finalDeck.slice(0, 5);
-            const counts = {};
-            firstFive.forEach(c => { counts[c.id] = (counts[c.id] || 0) + 1; });
-
-            const hasTriple = Object.values(counts).some(v => v >= 3);
-            if (!hasTriple) break;
-            attempts++;
-        }
-
-        gameCards = finalDeck;
-        console.log(`❌ Deck خاسر (attempts=${attempts}):`, gameCards.map(c => c.id));
-    }
-}
-
-function shuffleArray(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
 }
 
 // ================================================================
 //                      رسم البطاقات
 // ================================================================
-function renderCards() {
-    const grid = document.getElementById('cardsGrid');
-    grid.innerHTML = '';
-
-    const backImage = settingsCache.back_image_url || '';
-    const backStyle = backImage
-        ? `background-image: url('${backImage}'); background-size: cover; background-position: center;`
-        : '';
-
-    gameCards.forEach((card, index) => {
-        const el = document.createElement('div');
-        el.className = 'card';
-        el.dataset.index = index;
-
-        const back = document.createElement('div');
-        back.className = 'card-face card-back';
-        back.style.cssText = backStyle;
-        if (!backImage) back.textContent = '🎴';
-
-        const front = document.createElement('div');
-        front.className = 'card-face card-front';
-
-        if (card.image_url) {
-            const img = document.createElement('img');
-            img.src = card.image_url;
-            img.alt = card.icon || '';
-            img.onerror = () => { img.remove(); front.textContent = card.icon || '🎴'; };
-            front.appendChild(img);
-        } else {
-            front.textContent = card.icon || '🎴';
-        }
-        if (!card.image_url) {
-            front.style.background = `linear-gradient(135deg, ${card.color || '#0f3460'}, ${card.color2 || '#1a1a2e'})`;
-        }
-
-        el.appendChild(back);
-        el.appendChild(front);
-        el.addEventListener('click', () => handleCardClick(index));
-
-        grid.appendChild(el);
-    });
-}
-
 function renderPlaceholderCards() {
     const grid = document.getElementById('cardsGrid');
     grid.innerHTML = '';
@@ -1103,6 +1001,7 @@ function renderPlaceholderCards() {
     for (let i = 0; i < CARD_COUNT; i++) {
         const el = document.createElement('div');
         el.className = 'card';
+        el.dataset.index = i;
 
         const back = document.createElement('div');
         back.className = 'card-face card-back';
@@ -1115,7 +1014,28 @@ function renderPlaceholderCards() {
 
         el.appendChild(back);
         el.appendChild(front);
+        el.addEventListener('click', () => handleCardClick(i));
+
         grid.appendChild(el);
+    }
+}
+
+function updateCardFace(cardEl, cardData) {
+    const front = cardEl.querySelector('.card-front');
+    if (!front) return;
+
+    front.innerHTML = '';
+    front.style.background = '';
+
+    if (cardData.image_url) {
+        const img = document.createElement('img');
+        img.src = cardData.image_url;
+        img.alt = cardData.icon || '';
+        img.onerror = () => { img.remove(); front.textContent = cardData.icon || '🎴'; };
+        front.appendChild(img);
+    } else {
+        front.textContent = cardData.icon || '🎴';
+        front.style.background = `linear-gradient(135deg, ${cardData.color || '#0f3460'}, ${cardData.color2 || '#1a1a2e'})`;
     }
 }
 
@@ -1133,7 +1053,7 @@ function updateUI() {
 }
 
 // ================================================================
-//                      منطق قلب البطاقة
+//                      🎯 منطق قلب البطاقة الديناميكي
 // ================================================================
 async function handleCardClick(index) {
     if (!gameActive || busy) return;
@@ -1142,20 +1062,27 @@ async function handleCardClick(index) {
 
     busy = true;
 
-    // اقلب — البطاقة تبقى مفتوحة دائماً
+    // 1. اختر رمز هذه البطاقة ديناميكياً (قبل زيادة flipsUsed)
+    const cardData = pickSymbolForNextCard();
+    cardsData[index] = cardData;
+
+    // 2. سجّل الظهور
+    symbolCounts[cardData.id] = (symbolCounts[cardData.id] || 0) + 1;
+
+    // 3. اقلب البطاقة
     revealedStates[index] = true;
     flipsUsed++;
     updateUI();
     soundManager.playFlip();
 
     const cardEl = document.querySelector(`.card[data-index="${index}"]`);
+    updateCardFace(cardEl, cardData);
     cardEl.classList.add('flipped');
 
     await sleep(flipDuration);
 
-    // هل تطابق؟
-    const clickedPrizeId = gameCards[index].id;
-    const isWinningSymbol = !currentPrize.is_losing_round && clickedPrizeId === currentPrize.prize_id;
+    // 4. هل تطابق؟
+    const isWinningSymbol = !currentPrize.is_losing_round && cardData.id === currentPrize.prize_id;
 
     if (isWinningSymbol) {
         matchedStates[index] = true;
@@ -1178,7 +1105,7 @@ async function handleCardClick(index) {
         cardEl.classList.remove('wrong');
     }
 
-    // انتهت المحاولات بدون فوز؟
+    // 5. انتهت المحاولات؟
     if (flipsUsed >= maxFlips && matchesFound < MATCH_REQUIRED) {
         await sleep(600);
         await finishGame(false);
@@ -1190,7 +1117,7 @@ async function handleCardClick(index) {
 }
 
 async function highlightAllMatched() {
-    for (let i = 0; i < gameCards.length; i++) {
+    for (let i = 0; i < CARD_COUNT; i++) {
         if (matchedStates[i]) {
             const el = document.querySelector(`.card[data-index="${i}"]`);
             if (el) {
@@ -1216,8 +1143,6 @@ async function startGame() {
     busy = true;
     document.getElementById('startBtn').disabled = true;
     document.getElementById('resultBox').classList.remove('show');
-
-    // تأكد من إيقاف أي مؤثر سابق
     backgroundAmbience.stop();
 
     try {
@@ -1247,14 +1172,16 @@ async function startGame() {
         maxFlips = currentPrize.max_flips || 5;
         flipDuration = currentPrize.flip_duration || 600;
 
+        // ===== إعادة تعيين كل الحالة =====
         flipsUsed = 0;
         matchesFound = 0;
         gameActive = true;
         revealedStates = new Array(CARD_COUNT).fill(false);
         matchedStates = new Array(CARD_COUNT).fill(false);
+        cardsData = new Array(CARD_COUNT).fill(null);
+        symbolCounts = {};
 
-        buildDeck();
-        renderCards();
+        renderPlaceholderCards();
         updateUI();
 
         // 🎵 بدء المؤثر الخافت
@@ -1279,24 +1206,11 @@ async function startGame() {
 async function finishGame(won) {
     gameActive = false;
     document.getElementById('startBtn').disabled = true;
-
-    // 🔇 إيقاف الموسيقى الخلفية فوراً
     backgroundAmbience.stop();
 
-    // كشف البطاقات عند الخسارة
+    // عند الخسارة: لا نكشف باقي البطاقات (لم تُحدد بعد)
     if (!won) {
-        await sleep(400);
-        for (let i = 0; i < gameCards.length; i++) {
-            if (!revealedStates[i]) {
-                revealedStates[i] = true;
-                const el = document.querySelector(`.card[data-index="${i}"]`);
-                if (el) {
-                    el.classList.add('flipped');
-                    await sleep(100);
-                }
-            }
-        }
-        await sleep(800);
+        await sleep(600);
     }
 
     try {
@@ -1530,7 +1444,6 @@ async function renderAdminPanel() {
     const list = document.getElementById('prizesList');
     const summary = document.getElementById('probSummary');
 
-    // إحصاء النسب
     const totalProb = prizes.reduce((s, p) => s + parseFloat(p.probability || 0), 0);
     const loseChance = Math.max(0, 100 - totalProb);
     const winChance = Math.min(100, totalProb);
@@ -1693,7 +1606,6 @@ document.querySelectorAll('.btn-save[data-setting]').forEach(btn => {
         this.textContent = ok ? '✅' : '❌';
         this.classList.toggle('saved', ok);
         if (ok) {
-            // تحديث فوري للمتغيرات
             if (key === 'ambience_enabled') {
                 ambienceEnabled = value === true || value === 'true';
                 if (!ambienceEnabled) backgroundAmbience.stop();
