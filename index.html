@@ -1,0 +1,1804 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>JAK BOT BARTON</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+    width: 100%; min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    background: #0a0a0a; overflow-x: hidden;
+    padding: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ============ الخلفية ============ */
+.bg-image-fixed {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0; pointer-events: none;
+    overflow: hidden;
+}
+.bg-image-fixed img {
+    width: 100%; height: 100%; object-fit: cover;
+    animation: slowZoom 30s ease-in-out infinite alternate;
+}
+@keyframes slowZoom { 0% { transform: scale(1); } 100% { transform: scale(1.05); } }
+
+/* ============ الحاوية الرئيسية ============ */
+.game-wrapper {
+    position: relative; z-index: 1;
+    width: 100%; max-width: 480px;
+    display: none; flex-direction: column;
+    gap: 14px;
+}
+.game-wrapper.show { display: flex; animation: fadeIn 0.5s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+
+/* ============ عنوان اللعبة ============ */
+.game-title {
+    text-align: center;
+    color: #FFD700;
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.5), 0 0 40px rgba(255, 215, 0, 0.3);
+    padding: 10px;
+    animation: titlePulse 2.5s ease-in-out infinite;
+}
+@keyframes titlePulse {
+    0%, 100% { text-shadow: 0 0 20px rgba(255,215,0,0.5), 0 0 40px rgba(255,215,0,0.3); }
+    50% { text-shadow: 0 0 30px rgba(255,215,0,0.8), 0 0 60px rgba(255,215,0,0.5); }
+}
+
+/* ============ لوحة المعلومات ============ */
+.game-info {
+    display: flex; justify-content: space-around;
+    background: rgba(18, 18, 18, 0.85);
+    border: 1px solid rgba(255, 215, 0, 0.15);
+    border-radius: 14px;
+    padding: 10px;
+    backdrop-filter: blur(6px);
+}
+.info-item { text-align: center; }
+.info-label { color: #888; font-size: 11px; margin-bottom: 3px; }
+.info-value { color: #FFD700; font-size: 18px; font-weight: 700; }
+.info-value.danger { color: #FF4444; }
+.info-value.success { color: #00FF88; }
+
+/* ============ شبكة البطاقات ============ */
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    perspective: 1200px;
+}
+
+.card {
+    aspect-ratio: 3/4;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 0.6s cubic-bezier(0.4, 0.0, 0.2, 1);
+    cursor: pointer;
+}
+.card.flipped { transform: rotateY(180deg); }
+.card.matched {
+    animation: matchPulse 0.6s ease;
+    pointer-events: none;
+}
+@keyframes matchPulse {
+    0%, 100% { transform: rotateY(180deg) scale(1); }
+    50% { transform: rotateY(180deg) scale(1.08); }
+}
+.card:not(.flipped):not(.matched):hover { transform: translateY(-3px); }
+
+.card-face {
+    position: absolute; inset: 0;
+    border-radius: 10px;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    border: 2px solid rgba(255, 215, 0, 0.2);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.card-back {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    background-size: cover;
+    background-position: center;
+    color: #FFD700;
+    font-size: 32px;
+}
+.card-back::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(255,215,0,0.1) 50%, transparent 60%);
+    animation: shimmer 3s infinite;
+    pointer-events: none;
+}
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.card-front {
+    background: linear-gradient(135deg, #0f3460, #1a1a2e);
+    background-size: cover;
+    background-position: center;
+    transform: rotateY(180deg);
+    font-size: 34px;
+    color: #fff;
+}
+
+.card-front img, .card-back img {
+    width: 100%; height: 100%; object-fit: cover;
+}
+
+.card.matched .card-front {
+    border-color: #00FF88;
+    box-shadow: 0 0 30px rgba(0, 255, 136, 0.6), inset 0 0 30px rgba(0, 255, 136, 0.2);
+    animation: matchedGlow 1.2s ease-in-out infinite alternate;
+}
+@keyframes matchedGlow {
+    0% { box-shadow: 0 0 20px rgba(0, 255, 136, 0.4), inset 0 0 15px rgba(0, 255, 136, 0.15); }
+    100% { box-shadow: 0 0 45px rgba(0, 255, 136, 0.9), inset 0 0 40px rgba(0, 255, 136, 0.3); }
+}
+
+.card.matched-glow .card-front {
+    border-color: #FFD700;
+    box-shadow: 0 0 60px rgba(255, 215, 0, 0.9), inset 0 0 40px rgba(255, 215, 0, 0.4);
+    animation: matchedGlowWin 0.8s ease-in-out infinite alternate;
+}
+@keyframes matchedGlowWin {
+    0% { box-shadow: 0 0 40px rgba(255, 215, 0, 0.6); }
+    100% { box-shadow: 0 0 80px rgba(255, 215, 0, 1); }
+}
+
+.card.wrong .card-front {
+    border-color: #FF4444;
+    box-shadow: 0 0 15px rgba(255, 68, 68, 0.4);
+}
+
+/* ============ الأزرار ============ */
+.btn {
+    padding: 16px 20px;
+    border: none; border-radius: 16px;
+    font-size: 18px; font-weight: 700;
+    cursor: pointer; width: 100%;
+    transition: all 0.3s ease;
+}
+.btn-primary {
+    background: linear-gradient(135deg, #B8860B, #FFD700);
+    color: #0a0a0a;
+    box-shadow: 0 4px 30px rgba(255, 215, 0, 0.2);
+}
+.btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 40px rgba(255, 215, 0, 0.3); }
+.btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ============ مربع النتيجة ============ */
+.result-box {
+    background: rgba(18, 18, 18, 0.9);
+    border: 1px solid rgba(255, 215, 0, 0.2);
+    border-radius: 18px;
+    padding: 20px;
+    text-align: center;
+    display: none;
+    position: relative;
+    overflow: hidden;
+}
+.result-box.show { display: block; animation: resultPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes resultPop {
+    0% { transform: scale(0.7); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+.result-box.winner {
+    border-color: rgba(255, 215, 0, 0.5);
+    background: rgba(255, 215, 0, 0.08);
+    animation: winGlow 1.5s ease-in-out infinite alternate;
+}
+@keyframes winGlow {
+    0% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.1); }
+    100% { box-shadow: 0 0 80px rgba(255, 215, 0, 0.3); }
+}
+.result-icon { font-size: 60px; margin-bottom: 10px; }
+.result-title { color: #FFD700; font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+.result-amount {
+    font-size: 28px; font-weight: 900;
+    background: linear-gradient(135deg, #FFD700, #FF8C00, #FFD700);
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: goldShine 1.5s ease-in-out infinite;
+}
+@keyframes goldShine { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+
+/* ============ Confetti ============ */
+.confetti-container {
+    position: absolute; inset: 0;
+    pointer-events: none; overflow: hidden;
+}
+.confetti {
+    position: absolute; width: 10px; height: 10px;
+    opacity: 0;
+    animation: confettiFall 2.5s ease-in forwards;
+}
+@keyframes confettiFall {
+    0% { opacity: 1; transform: translateY(-20px) rotate(0deg) scale(1); }
+    100% { opacity: 0; transform: translateY(300px) rotate(720deg) scale(0); }
+}
+
+/* ============ إشعارات ============ */
+.notification-bar {
+    display: none;
+    position: fixed; top: 20px; left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #FFD700, #FF8C00);
+    color: #0a0a0a;
+    padding: 14px 28px; border-radius: 16px;
+    font-size: 16px; font-weight: 700;
+    z-index: 1000;
+    box-shadow: 0 10px 60px rgba(255, 215, 0, 0.4);
+    animation: notifSlide 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    max-width: 90%; text-align: center;
+}
+.notification-bar.show { display: block; }
+@keyframes notifSlide {
+    0% { transform: translateX(-50%) translateY(-100px); opacity: 0; }
+    100% { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* ============ إشعار الإيداع ============ */
+.deposit-notice {
+    background: rgba(18, 18, 18, 0.85);
+    border: 1px solid rgba(255, 215, 0, 0.15);
+    border-radius: 12px;
+    padding: 12px 14px;
+    text-align: center;
+    display: none;
+}
+.deposit-notice.show { display: block; }
+.deposit-notice .notice-text { color: #FF8C00; font-size: 14px; }
+.deposit-notice .notice-text .amount { color: #FFD700; font-weight: 700; }
+.deposit-notice .notice-status { font-size: 13px; margin-top: 4px; color: #888; }
+.deposit-notice .met { color: #00FF88; }
+.deposit-notice .not-met { color: #FF4444; }
+
+/* ============ شاشة اللودينغ ============ */
+.loading-screen {
+    display: none;
+    position: fixed; inset: 0;
+    z-index: 9999;
+    background: #0a0a0a;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 20px;
+}
+.loading-screen.active { display: flex; }
+.loading-screen .loading-image {
+    width: 60vw; max-width: 260px;
+    aspect-ratio: 1/1;
+    border-radius: 50%; object-fit: cover;
+    border: 3px solid rgba(255, 215, 0, 0.3);
+    box-shadow: 0 0 80px rgba(255, 215, 0, 0.2);
+    animation: loadingPulse 2s ease-in-out infinite;
+    margin-bottom: 28px;
+}
+@keyframes loadingPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.04); opacity: 0.85; }
+}
+.progress-container { width: 60%; max-width: 240px; }
+.progress-bar-bg {
+    width: 100%; height: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 5px; overflow: hidden;
+}
+.progress-bar-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #FFD700, #FF8C00);
+    border-radius: 5px;
+    transition: width 0.3s ease;
+}
+.progress-text {
+    color: #888; font-size: 14px;
+    margin-top: 12px; text-align: center;
+    font-weight: 600; letter-spacing: 1px;
+}
+
+/* ============ خطأ ============ */
+.error-container {
+    display: none;
+    text-align: center;
+    padding: 30px 16px;
+    background: rgba(18, 18, 18, 0.9);
+    border-radius: 20px;
+    max-width: 420px; margin: 0 auto;
+    z-index: 1;
+}
+.error-container.show { display: block; }
+.error-container .error-icon { font-size: 44px; margin-bottom: 10px; }
+.error-container .error-title { color: #FFD700; font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+.error-container .error-text { color: #777; font-size: 14px; line-height: 1.6; }
+.error-container .error-text .highlight { color: #FFD700; }
+.btn-open-bot {
+    margin-top: 16px;
+    padding: 12px 32px;
+    background: linear-gradient(135deg, #B8860B, #FFD700);
+    border: none; border-radius: 14px;
+    color: #0a0a0a; font-size: 15px;
+    font-weight: 700; cursor: pointer;
+}
+
+.error-msg {
+    background: rgba(18, 18, 18, 0.9);
+    border: 1px solid rgba(255, 0, 0, 0.2);
+    border-radius: 12px;
+    padding: 10px; color: #FF6B6B;
+    text-align: center; font-size: 14px;
+    display: none;
+}
+.error-msg.show { display: block; animation: fadeIn 0.3s ease; }
+
+/* ============ لوحة الإدارة ============ */
+.admin-panel {
+    display: none;
+    background: rgba(18, 18, 18, 0.9);
+    border: 1px solid rgba(255, 215, 0, 0.2);
+    border-radius: 20px;
+    padding: 16px;
+    max-width: 500px; width: 100%;
+    margin: 14px auto;
+    position: relative; z-index: 1;
+}
+.admin-panel.show { display: block; }
+.admin-panel .panel-title {
+    color: #FFD700; font-size: 16px; font-weight: 700;
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+}
+.admin-panel .badge {
+    background: #FFD700; color: #0a0a0a;
+    font-size: 9px; padding: 2px 12px;
+    border-radius: 20px; font-weight: 700;
+}
+
+.admin-panel .prize-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 10px; margin-bottom: 8px;
+    display: flex; flex-direction: column; gap: 8px;
+}
+.admin-panel .prize-row {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.admin-panel input, .admin-panel select {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 215, 0, 0.15);
+    background: rgba(0, 0, 0, 0.3);
+    color: #fff; font-size: 11px;
+    min-width: 50px;
+}
+.admin-panel input:focus, .admin-panel select:focus {
+    outline: none; border-color: #FFD700;
+}
+.admin-panel input::placeholder { color: #555; }
+.admin-panel .prize-preview {
+    width: 44px; height: 58px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    background-size: cover; background-position: center;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    border: 1px solid rgba(255,215,0,0.2);
+    flex-shrink: 0;
+}
+.admin-panel .btn-save, .admin-panel .btn-add {
+    padding: 6px 14px;
+    background: linear-gradient(135deg, #B8860B, #FFD700);
+    border: none; border-radius: 6px;
+    color: #0a0a0a; font-weight: 700;
+    font-size: 12px; cursor: pointer;
+    transition: all 0.3s;
+}
+.admin-panel .btn-save:hover, .admin-panel .btn-add:hover { transform: scale(1.05); }
+.admin-panel .btn-save.saved { background: #00FF88; }
+.admin-panel .btn-delete {
+    background: rgba(255, 0, 0, 0.15);
+    border: none; color: #FF4444;
+    padding: 6px 10px; border-radius: 6px;
+    cursor: pointer; font-size: 12px;
+}
+.admin-panel .btn-delete:hover { background: rgba(255, 0, 0, 0.3); }
+
+.admin-panel .section-title {
+    color: #FFD700; font-size: 13px; font-weight: 700;
+    margin: 14px 0 8px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.admin-panel .setting-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 8px; flex-wrap: wrap;
+}
+.admin-panel .setting-row label {
+    color: #888; font-size: 11px;
+    min-width: 90px;
+}
+.admin-panel .setting-row input,
+.admin-panel .setting-row textarea {
+    flex: 1; min-width: 100px;
+}
+.admin-panel .toggle-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 8px;
+}
+.admin-panel .toggle-row label {
+    color: #888; font-size: 11px;
+    min-width: 90px;
+}
+.admin-panel .toggle-row input[type="checkbox"] {
+    accent-color: #FFD700;
+    width: 16px; height: 16px;
+    cursor: pointer;
+}
+
+/* ============ إحصاء النسب ============ */
+.prob-summary {
+    background: rgba(255, 215, 0, 0.05);
+    border: 1px solid rgba(255, 215, 0, 0.15);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: #aaa;
+    line-height: 1.8;
+}
+.prob-summary strong { color: #FFD700; }
+.prob-summary .warn { color: #FF8C00; }
+.prob-summary .danger { color: #FF4444; }
+
+@media (max-width: 480px) {
+    .cards-grid { gap: 6px; }
+    .card { border-radius: 8px; }
+    .game-title { font-size: 22px; letter-spacing: 2px; }
+    .result-icon { font-size: 48px; }
+    .result-amount { font-size: 22px; }
+    .btn { font-size: 16px; padding: 14px; }
+}
+</style>
+</head>
+<body>
+
+<!-- الخلفية -->
+<div class="bg-image-fixed">
+    <img id="bgImage" src="https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=1920&q=80" alt="BG">
+</div>
+
+<!-- الإشعار -->
+<div class="notification-bar" id="notificationBar"></div>
+
+<!-- خطأ الدخول -->
+<div class="error-container" id="errorContainer">
+    <div class="error-icon">⚠️</div>
+    <div class="error-title">يجب الدخول من البوت</div>
+    <div class="error-text">
+        لا يمكن الوصول إلى معرف المستخدم.<br>
+        يرجى فتح اللعبة من خلال <span class="highlight">بوت JAK BOT BARTON</span>.
+    </div>
+    <button class="btn-open-bot" onclick="window.open('https://t.me/JakBotBartonBot', '_blank')">🚀 فتح البوت</button>
+</div>
+
+<!-- شاشة اللودينغ -->
+<div class="loading-screen" id="loadingScreen">
+    <img class="loading-image" id="loadingImage" src="https://via.placeholder.com/200/1a1a2e/FFD700?text=🎴" alt="Loading">
+    <div class="progress-container">
+        <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="loaderProgressBar"></div>
+        </div>
+        <div class="progress-text" id="loaderStatusText">0%</div>
+    </div>
+</div>
+
+<!-- الحاوية الرئيسية -->
+<div class="game-wrapper" id="gameWrapper">
+    <div class="game-title" id="gameTitle">🎴 JAK BOT BARTON</div>
+
+    <div class="game-info">
+        <div class="info-item">
+            <div class="info-label">المحاولات</div>
+            <div class="info-value" id="flipsLeft">5</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">المطابقات</div>
+            <div class="info-value" id="matchesCount">0 / 3</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">الحالة</div>
+            <div class="info-value success" id="statusText">جاهز</div>
+        </div>
+    </div>
+
+    <div class="cards-grid" id="cardsGrid"></div>
+
+    <button class="btn btn-primary" id="startBtn" disabled>
+        🎮 ابدأ اللعب
+    </button>
+
+    <div class="deposit-notice" id="depositNotice">
+        <div class="notice-text">
+            💰 مطلوب إيداع <span class="amount" id="depositMinAmount">0</span> SYP
+            خلال <span id="depositCheckHours">24</span> ساعة
+        </div>
+        <div class="notice-status" id="depositStatus">الحالة: <span class="not-met">❌ غير مكتمل</span></div>
+    </div>
+
+    <div class="result-box" id="resultBox">
+        <div class="confetti-container" id="confettiContainer"></div>
+        <div class="result-icon" id="resultIcon">🎉</div>
+        <div class="result-title" id="resultTitle"></div>
+        <div class="result-amount" id="resultAmount"></div>
+    </div>
+
+    <div class="error-msg" id="errorMsg"><span id="errorText"></span></div>
+</div>
+
+<!-- لوحة الإدارة -->
+<div class="admin-panel" id="adminPanel">
+    <div class="panel-title">⚙️ لوحة الإدارة <span class="badge">ADMIN</span></div>
+
+    <div class="prob-summary" id="probSummary"></div>
+
+    <div id="prizesList"></div>
+
+    <div class="section-title">➕ إضافة جائزة جديدة</div>
+    <div id="addPrizeForm" class="prize-item">
+        <div class="prize-row">
+            <input type="text" id="newName" placeholder="الاسم (الإدارة)" style="flex:1.5;">
+            <input type="text" id="newIcon" placeholder="🎴" style="max-width:50px;">
+            <input type="number" id="newAmount" placeholder="المبلغ" style="max-width:70px;">
+            <input type="number" id="newProb" placeholder="نسبة %" min="0" max="100" step="0.1" style="max-width:60px;">
+        </div>
+        <div class="prize-row">
+            <input type="text" id="newDesc" placeholder="الوصف (للجمهور)" style="flex:2;">
+        </div>
+        <div class="prize-row">
+            <input type="text" id="newImgUrl" placeholder="رابط صورة الرمز" style="flex:2;">
+            <input type="color" id="newColor" value="#1a1a2e" style="max-width:40px;height:32px;">
+            <input type="color" id="newColor2" value="#16213e" style="max-width:40px;height:32px;">
+            <button class="btn-add" id="addBtn">➕ إضافة</button>
+        </div>
+    </div>
+
+    <div class="section-title">⚙️ الإعدادات العامة</div>
+
+    <div class="setting-row">
+        <label>صورة الخلفية</label>
+        <input type="text" id="editBgImage" placeholder="رابط">
+        <button class="btn-save" data-setting="bg_image_url" data-field="editBgImage">💾</button>
+    </div>
+    <div class="setting-row">
+        <label>صورة اللودينغ</label>
+        <input type="text" id="editLoadingImage" placeholder="رابط">
+        <button class="btn-save" data-setting="loading_image_url" data-field="editLoadingImage">💾</button>
+    </div>
+    <div class="setting-row">
+        <label>صورة ظهر البطاقة</label>
+        <input type="text" id="editBackImage" placeholder="رابط صورة ظهر البطاقة">
+        <button class="btn-save" data-setting="back_image_url" data-field="editBackImage">💾</button>
+    </div>
+    <div class="setting-row">
+        <label>اسم اللعبة (بانر)</label>
+        <input type="text" id="editBanner" placeholder="JAK BOT BARTON">
+        <button class="btn-save" data-setting="banner_text" data-field="editBanner">💾</button>
+    </div>
+    <div class="setting-row">
+        <label>مدة قلب البطاقة</label>
+        <input type="number" id="editFlipDuration" placeholder="600" style="max-width:80px;">
+        <span style="color:#555;font-size:11px;">ms</span>
+        <button class="btn-save" data-setting="flip_duration" data-field="editFlipDuration">💾</button>
+    </div>
+    <div class="setting-row">
+        <label>فترة التبريد</label>
+        <input type="number" id="editIntervalHours" placeholder="24" style="max-width:70px;">
+        <span style="color:#555;font-size:11px;">ساعة</span>
+        <button class="btn-save" data-setting="spin_interval_hours" data-field="editIntervalHours">💾</button>
+    </div>
+    <div class="toggle-row">
+        <label>تفعيل اللعبة</label>
+        <input type="checkbox" id="editIsActive">
+        <button class="btn-save" data-setting="is_active" data-field="editIsActive" data-type="checkbox">💾</button>
+    </div>
+    <div class="toggle-row">
+        <label>تفعيل شرط الإيداع</label>
+        <input type="checkbox" id="editDepositRequired">
+        <button class="btn-save" data-setting="deposit_required" data-field="editDepositRequired" data-type="checkbox">💾</button>
+    </div>
+    <div class="toggle-row">
+        <label>تفعيل الصوت الخلفي</label>
+        <input type="checkbox" id="editAmbienceEnabled" checked>
+        <button class="btn-save" data-setting="ambience_enabled" data-field="editAmbienceEnabled" data-type="checkbox">💾</button>
+    </div>
+    <div class="setting-row">
+        <label>الحد الأدنى للإيداع</label>
+        <input type="number" id="editDepositMin" placeholder="1000" style="max-width:80px;">
+        <span style="color:#555;font-size:11px;">SYP</span>
+        <button class="btn-save" data-setting="deposit_min_amount" data-field="editDepositMin">💾</button>
+    </div>
+    <div class="setting-row">
+        <label>مدة صلاحية الإيداع</label>
+        <input type="number" id="editDepositHours" placeholder="24" style="max-width:70px;">
+        <span style="color:#555;font-size:11px;">ساعة</span>
+        <button class="btn-save" data-setting="deposit_check_hours" data-field="editDepositHours">💾</button>
+    </div>
+
+    <div class="section-title">🔧 أدوات</div>
+    <div class="prize-row">
+        <button class="btn-save" id="refreshAllBtn">🔄 تحديث الكل</button>
+        <button class="btn-delete" id="resetPrizesBtn">🗑️ إعادة تعيين الجوائز</button>
+        <button class="btn-delete" id="resetGamesBtn">🗑️ مسح كل الألعاب</button>
+    </div>
+</div>
+
+<script>
+// ================================================================
+//                      الإعدادات
+// ================================================================
+const API_BASE = 'https://shah-1-ixu9.onrender.com';
+const ADMIN_ID = 7011476249;
+const CARD_COUNT = 12;
+const MATCH_REQUIRED = 3;
+
+let USER_ID = null;
+let settingsCache = {};
+let prizesCache = [];
+let currentPrize = null;
+let gameCards = [];
+let revealedStates = [];
+let matchedStates = [];
+let flipsUsed = 0;
+let maxFlips = 5;
+let matchesFound = 0;
+let gameActive = false;
+let busy = false;
+let flipDuration = 600;
+let ambienceEnabled = true;
+let soundEnabled = true;
+
+// ================================================================
+//                      ConnectionManager
+// ================================================================
+class ConnectionManager {
+    constructor() {
+        this.maxRetries = 3;
+        this.retryDelay = 2000;
+        this.timeout = 50000;
+    }
+    async fetchWithRetry(url, options = {}, retryCount = 0) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+        try {
+            const response = await fetch(url, { ...options, signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') throw new Error('انتهت مهلة الاتصال (50 ثانية)');
+            if (retryCount < this.maxRetries) {
+                await new Promise(r => setTimeout(r, this.retryDelay * (retryCount + 1)));
+                return this.fetchWithRetry(url, options, retryCount + 1);
+            }
+            throw error;
+        }
+    }
+}
+const connectionManager = new ConnectionManager();
+
+// ================================================================
+//                      مؤثرات صوتية أساسية
+// ================================================================
+class SoundManager {
+    constructor() { this.audioContext = null; this.initialized = false; }
+    init() {
+        if (this.initialized) return;
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.initialized = true;
+        } catch (e) {}
+    }
+    playFlip() {
+        if (!this.initialized || !soundEnabled) return;
+        try {
+            const ctx = this.audioContext;
+            const t = ctx.currentTime;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.frequency.setValueAtTime(600, t);
+            osc.frequency.exponentialRampToValueAtTime(900, t + 0.1);
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.06, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+            osc.start(t); osc.stop(t + 0.12);
+        } catch (e) {}
+    }
+    playMatch() {
+        if (!this.initialized || !soundEnabled) return;
+        try {
+            const ctx = this.audioContext;
+            const t = ctx.currentTime;
+            [523, 659, 784, 1047].forEach((f, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.frequency.setValueAtTime(f, t + i * 0.1);
+                osc.type = 'sine';
+                gain.gain.setValueAtTime(0.08, t + i * 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.1 + 0.25);
+                osc.start(t + i * 0.1); osc.stop(t + i * 0.1 + 0.25);
+            });
+        } catch (e) {}
+    }
+    playWrong() {
+        if (!this.initialized || !soundEnabled) return;
+        try {
+            const ctx = this.audioContext;
+            const t = ctx.currentTime;
+            [400, 300].forEach((f, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.frequency.setValueAtTime(f, t + i * 0.15);
+                osc.type = 'sawtooth';
+                gain.gain.setValueAtTime(0.06, t + i * 0.15);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.15 + 0.2);
+                osc.start(t + i * 0.15); osc.stop(t + i * 0.15 + 0.2);
+            });
+        } catch (e) {}
+    }
+    playWin() {
+        if (!this.initialized || !soundEnabled) return;
+        try {
+            const ctx = this.audioContext;
+            const t = ctx.currentTime;
+            [523, 587, 659, 784, 659, 784, 880, 1047].forEach((f, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.frequency.setValueAtTime(f, t + i * 0.09);
+                osc.type = i % 2 ? 'triangle' : 'sine';
+                gain.gain.setValueAtTime(0.07, t + i * 0.09);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.09 + 0.2);
+                osc.start(t + i * 0.09); osc.stop(t + i * 0.09 + 0.2);
+            });
+        } catch (e) {}
+    }
+    playLose() {
+        if (!this.initialized || !soundEnabled) return;
+        try {
+            const ctx = this.audioContext;
+            const t = ctx.currentTime;
+            [440, 370, 330, 247].forEach((f, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.frequency.setValueAtTime(f, t + i * 0.25);
+                osc.type = 'sawtooth';
+                gain.gain.setValueAtTime(0.05, t + i * 0.25);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.25 + 0.3);
+                osc.start(t + i * 0.25); osc.stop(t + i * 0.25 + 0.3);
+            });
+        } catch (e) {}
+    }
+}
+const soundManager = new SoundManager();
+
+// ================================================================
+//                      🎵 مؤثر صوتي خافت في الخلفية
+// ================================================================
+class BackgroundAmbience {
+    constructor() {
+        this.audioContext = null;
+        this.isPlaying = false;
+        this.nodes = [];
+        this.masterGain = null;
+    }
+
+    init(ctx) {
+        this.audioContext = ctx;
+    }
+
+    start() {
+        if (this.isPlaying || !this.audioContext) return;
+        if (!ambienceEnabled || !soundEnabled) return;
+        try {
+            const ctx = this.audioContext;
+            // استئناف السياق إذا كان معلّقاً (متصفحات حديثة)
+            if (ctx.state === 'suspended') ctx.resume();
+
+            const now = ctx.currentTime;
+
+            // Master gain خافت جداً
+            this.masterGain = ctx.createGain();
+            this.masterGain.gain.setValueAtTime(0, now);
+            this.masterGain.gain.linearRampToValueAtTime(0.035, now + 1.5);
+            this.masterGain.connect(ctx.destination);
+
+            // === طبقة 1: نغمة منخفضة ثابتة (A2) ===
+            const drone1 = ctx.createOscillator();
+            const drone1Gain = ctx.createGain();
+            drone1.type = 'sine';
+            drone1.frequency.setValueAtTime(110, now);
+            drone1Gain.gain.setValueAtTime(0.5, now);
+            drone1.connect(drone1Gain);
+            drone1Gain.connect(this.masterGain);
+            drone1.start(now);
+
+            // === طبقة 2: نغمة خامسة (E3) ===
+            const drone2 = ctx.createOscillator();
+            const drone2Gain = ctx.createGain();
+            drone2.type = 'sine';
+            drone2.frequency.setValueAtTime(164.81, now);
+            drone2Gain.gain.setValueAtTime(0.3, now);
+            drone2.connect(drone2Gain);
+            drone2Gain.connect(this.masterGain);
+            drone2.start(now);
+
+            // === طبقة 3: تذبذب خفيف (LFO) ===
+            const lfo = ctx.createOscillator();
+            const lfoGain = ctx.createGain();
+            lfo.type = 'sine';
+            lfo.frequency.setValueAtTime(0.15, now);
+            lfoGain.gain.setValueAtTime(0.15, now);
+            lfo.connect(lfoGain);
+            lfoGain.connect(drone1Gain.gain);
+            lfo.start(now);
+
+            // === طبقة 4: نغمة عالية خافتة (E4) ===
+            const drone3 = ctx.createOscillator();
+            const drone3Gain = ctx.createGain();
+            drone3.type = 'triangle';
+            drone3.frequency.setValueAtTime(329.63, now);
+            drone3Gain.gain.setValueAtTime(0.08, now);
+            drone3.connect(drone3Gain);
+            drone3Gain.connect(this.masterGain);
+            drone3.start(now);
+
+            this.nodes = [drone1, drone2, drone3, lfo];
+            this.isPlaying = true;
+        } catch (e) {
+            console.warn('Ambience start error:', e);
+        }
+    }
+
+    stop() {
+        if (!this.isPlaying) return;
+        try {
+            const ctx = this.audioContext;
+            const now = ctx.currentTime;
+
+            if (this.masterGain) {
+                this.masterGain.gain.cancelScheduledValues(now);
+                this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+                this.masterGain.gain.linearRampToValueAtTime(0, now + 0.8);
+            }
+
+            setTimeout(() => {
+                this.nodes.forEach(node => {
+                    try { node.stop(); } catch (e) {}
+                });
+                this.nodes = [];
+                this.masterGain = null;
+                this.isPlaying = false;
+            }, 900);
+        } catch (e) {
+            console.warn('Ambience stop error:', e);
+            this.isPlaying = false;
+        }
+    }
+}
+
+const backgroundAmbience = new BackgroundAmbience();
+
+// ================================================================
+//                      الحصول على USER_ID
+// ================================================================
+function getUserId() {
+    const params = new URLSearchParams(window.location.search);
+    let id = params.get('user_id') || params.get('userId') || params.get('id');
+    if (id && !isNaN(id)) {
+        USER_ID = parseInt(id);
+        localStorage.setItem('card_user_id', USER_ID);
+        return USER_ID;
+    }
+    try {
+        if (window.Telegram && window.Telegram.WebApp) {
+            const user = window.Telegram.WebApp.initDataUnsafe?.user;
+            if (user && user.id) {
+                USER_ID = user.id;
+                localStorage.setItem('card_user_id', USER_ID);
+                return USER_ID;
+            }
+        }
+    } catch (e) {}
+    id = localStorage.getItem('card_user_id');
+    if (id) { USER_ID = parseInt(id); return USER_ID; }
+    return null;
+}
+
+// ================================================================
+//                      🃏 بناء الـ deck — النسخة الذكية
+// ================================================================
+function buildDeck() {
+    const isLosing = currentPrize.is_losing_round === true;
+    const allPrizes = prizesCache;
+
+    if (allPrizes.length === 0) {
+        throw new Error('لا توجد جوائز متاحة');
+    }
+
+    const deck = new Array(CARD_COUNT);
+
+    // اختيار 4 رموز "للتوزيع" (4 × 3 = 12 بطاقة)
+    let symbolsForCards;
+
+    if (!isLosing) {
+        const winningPrize = prizesCache.find(p => p.id === currentPrize.prize_id);
+        if (!winningPrize) throw new Error('الجائزة الفائزة غير موجودة');
+
+        const otherPrizes = prizesCache.filter(p => p.id !== winningPrize.id);
+        shuffleArray(otherPrizes);
+        symbolsForCards = [winningPrize, ...otherPrizes.slice(0, 3)];
+
+        while (symbolsForCards.length < 4) {
+            symbolsForCards.push(otherPrizes[symbolsForCards.length % otherPrizes.length]);
+        }
+    } else {
+        const shuffled = [...prizesCache];
+        shuffleArray(shuffled);
+        symbolsForCards = shuffled.slice(0, 4);
+        while (symbolsForCards.length < 4) {
+            symbolsForCards.push(shuffled[symbolsForCards.length % shuffled.length]);
+        }
+    }
+
+    // كل رمز يظهر 3 مرات = 12 بطاقة
+    const allCards = [];
+    symbolsForCards.forEach(prize => {
+        for (let i = 0; i < 3; i++) allCards.push({ ...prize });
+    });
+
+    shuffleArray(allCards);
+
+    if (!isLosing) {
+        // ============ جولة رابحة: 3 بطاقات فائزة ضمن أول 5 مواقع ============
+        const winningId = currentPrize.prize_id;
+
+        const winningPositions = [];
+        allCards.forEach((card, idx) => {
+            if (card.id === winningId) winningPositions.push(idx);
+        });
+
+        // اختر 3 مواقع عشوائية من [0,1,2,3,4]
+        const firstFive = shuffleArray([0, 1, 2, 3, 4]);
+        const targetWinPositions = firstFive.slice(0, 3);
+
+        const finalDeck = new Array(CARD_COUNT);
+        const winningCard = { ...allCards[winningPositions[0]] };
+        targetWinPositions.forEach(pos => {
+            finalDeck[pos] = { ...winningCard };
+        });
+
+        const remainingCards = [];
+        let winRemoved = 0;
+        allCards.forEach(card => {
+            if (card.id === winningId && winRemoved < 3) {
+                winRemoved++;
+                return;
+            }
+            remainingCards.push(card);
+        });
+
+        shuffleArray(remainingCards);
+        let remIdx = 0;
+        for (let i = 0; i < CARD_COUNT; i++) {
+            if (!finalDeck[i]) finalDeck[i] = remainingCards[remIdx++];
+        }
+
+        gameCards = finalDeck;
+        console.log('✅ Deck رابح:', gameCards.map(c => c.id), '| الفائز:', winningId);
+    } else {
+        // ============ جولة خاسرة: لا 3 تطابقات في أول 5 ============
+        let attempts = 0;
+        let finalDeck = [...allCards];
+
+        while (attempts < 200) {
+            shuffleArray(finalDeck);
+
+            const firstFive = finalDeck.slice(0, 5);
+            const counts = {};
+            firstFive.forEach(c => { counts[c.id] = (counts[c.id] || 0) + 1; });
+
+            const hasTriple = Object.values(counts).some(v => v >= 3);
+            if (!hasTriple) break;
+            attempts++;
+        }
+
+        gameCards = finalDeck;
+        console.log(`❌ Deck خاسر (attempts=${attempts}):`, gameCards.map(c => c.id));
+    }
+}
+
+function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+// ================================================================
+//                      رسم البطاقات
+// ================================================================
+function renderCards() {
+    const grid = document.getElementById('cardsGrid');
+    grid.innerHTML = '';
+
+    const backImage = settingsCache.back_image_url || '';
+    const backStyle = backImage
+        ? `background-image: url('${backImage}'); background-size: cover; background-position: center;`
+        : '';
+
+    gameCards.forEach((card, index) => {
+        const el = document.createElement('div');
+        el.className = 'card';
+        el.dataset.index = index;
+
+        const back = document.createElement('div');
+        back.className = 'card-face card-back';
+        back.style.cssText = backStyle;
+        if (!backImage) back.textContent = '🎴';
+
+        const front = document.createElement('div');
+        front.className = 'card-face card-front';
+
+        if (card.image_url) {
+            const img = document.createElement('img');
+            img.src = card.image_url;
+            img.alt = card.icon || '';
+            img.onerror = () => { img.remove(); front.textContent = card.icon || '🎴'; };
+            front.appendChild(img);
+        } else {
+            front.textContent = card.icon || '🎴';
+        }
+        if (!card.image_url) {
+            front.style.background = `linear-gradient(135deg, ${card.color || '#0f3460'}, ${card.color2 || '#1a1a2e'})`;
+        }
+
+        el.appendChild(back);
+        el.appendChild(front);
+        el.addEventListener('click', () => handleCardClick(index));
+
+        grid.appendChild(el);
+    });
+}
+
+function renderPlaceholderCards() {
+    const grid = document.getElementById('cardsGrid');
+    grid.innerHTML = '';
+
+    const backImage = settingsCache.back_image_url || '';
+    const backStyle = backImage
+        ? `background-image: url('${backImage}'); background-size: cover; background-position: center;`
+        : '';
+
+    for (let i = 0; i < CARD_COUNT; i++) {
+        const el = document.createElement('div');
+        el.className = 'card';
+
+        const back = document.createElement('div');
+        back.className = 'card-face card-back';
+        back.style.cssText = backStyle;
+        if (!backImage) back.textContent = '🎴';
+
+        const front = document.createElement('div');
+        front.className = 'card-face card-front';
+        front.textContent = '?';
+
+        el.appendChild(back);
+        el.appendChild(front);
+        grid.appendChild(el);
+    }
+}
+
+function updateUI() {
+    const flipsLeftVal = maxFlips - flipsUsed;
+    document.getElementById('flipsLeft').textContent = flipsLeftVal;
+    document.getElementById('matchesCount').textContent = `${matchesFound} / ${MATCH_REQUIRED}`;
+    document.getElementById('flipsLeft').classList.toggle('danger', flipsLeftVal <= 1);
+
+    const statusEl = document.getElementById('statusText');
+    if (!gameActive) statusEl.textContent = 'جاهز';
+    else if (matchesFound >= MATCH_REQUIRED) statusEl.textContent = 'فوز!';
+    else if (flipsUsed >= maxFlips) statusEl.textContent = 'انتهى';
+    else statusEl.textContent = 'العب!';
+}
+
+// ================================================================
+//                      منطق قلب البطاقة
+// ================================================================
+async function handleCardClick(index) {
+    if (!gameActive || busy) return;
+    if (revealedStates[index] || matchedStates[index]) return;
+    if (flipsUsed >= maxFlips) return;
+
+    busy = true;
+
+    // اقلب — البطاقة تبقى مفتوحة دائماً
+    revealedStates[index] = true;
+    flipsUsed++;
+    updateUI();
+    soundManager.playFlip();
+
+    const cardEl = document.querySelector(`.card[data-index="${index}"]`);
+    cardEl.classList.add('flipped');
+
+    await sleep(flipDuration);
+
+    // هل تطابق؟
+    const clickedPrizeId = gameCards[index].id;
+    const isWinningSymbol = !currentPrize.is_losing_round && clickedPrizeId === currentPrize.prize_id;
+
+    if (isWinningSymbol) {
+        matchedStates[index] = true;
+        matchesFound++;
+        cardEl.classList.add('matched');
+        soundManager.playMatch();
+        updateUI();
+
+        if (matchesFound >= MATCH_REQUIRED) {
+            await highlightAllMatched();
+            await sleep(800);
+            await finishGame(true);
+            busy = false;
+            return;
+        }
+    } else {
+        cardEl.classList.add('wrong');
+        soundManager.playWrong();
+        await sleep(300);
+        cardEl.classList.remove('wrong');
+    }
+
+    // انتهت المحاولات بدون فوز؟
+    if (flipsUsed >= maxFlips && matchesFound < MATCH_REQUIRED) {
+        await sleep(600);
+        await finishGame(false);
+        busy = false;
+        return;
+    }
+
+    busy = false;
+}
+
+async function highlightAllMatched() {
+    for (let i = 0; i < gameCards.length; i++) {
+        if (matchedStates[i]) {
+            const el = document.querySelector(`.card[data-index="${i}"]`);
+            if (el) {
+                el.classList.add('matched-glow');
+                await sleep(150);
+            }
+        }
+    }
+}
+
+// ================================================================
+//                      بدء اللعب
+// ================================================================
+async function startGame() {
+    if (busy || gameActive) return;
+
+    if (!USER_ID) { showError('معرف المستخدم غير موجود'); return; }
+    if (!prizesCache || prizesCache.length === 0) {
+        showError('لا توجد جوائز محمّلة — حاول إعادة التحميل');
+        return;
+    }
+
+    busy = true;
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('resultBox').classList.remove('show');
+
+    // تأكد من إيقاف أي مؤثر سابق
+    backgroundAmbience.stop();
+
+    try {
+        const res = await connectionManager.fetchWithRetry(`${API_BASE}/api/game/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: USER_ID })
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+            showError(data.error || 'فشل بدء اللعبة');
+            if (data.remaining_hours !== undefined) {
+                document.getElementById('startBtn').textContent =
+                    `⏳ ${data.remaining_hours}h ${data.remaining_minutes}m`;
+            } else if (data.deposit_required) {
+                document.getElementById('startBtn').textContent = '💰 إيداع مطلوب';
+            } else {
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('startBtn').textContent = '🎮 ابدأ اللعب';
+            }
+            busy = false;
+            return;
+        }
+
+        currentPrize = data.game;
+        maxFlips = currentPrize.max_flips || 5;
+        flipDuration = currentPrize.flip_duration || 600;
+
+        flipsUsed = 0;
+        matchesFound = 0;
+        gameActive = true;
+        revealedStates = new Array(CARD_COUNT).fill(false);
+        matchedStates = new Array(CARD_COUNT).fill(false);
+
+        buildDeck();
+        renderCards();
+        updateUI();
+
+        // 🎵 بدء المؤثر الخافت
+        soundManager.init();
+        backgroundAmbience.init(soundManager.audioContext);
+        backgroundAmbience.start();
+
+        document.getElementById('startBtn').textContent = '🎮 اللعبة جارية...';
+        busy = false;
+    } catch (e) {
+        backgroundAmbience.stop();
+        showError('خطأ في الاتصال: ' + e.message);
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('startBtn').textContent = '🎮 ابدأ اللعب';
+        busy = false;
+    }
+}
+
+// ================================================================
+//                      إنهاء اللعبة
+// ================================================================
+async function finishGame(won) {
+    gameActive = false;
+    document.getElementById('startBtn').disabled = true;
+
+    // 🔇 إيقاف الموسيقى الخلفية فوراً
+    backgroundAmbience.stop();
+
+    // كشف البطاقات عند الخسارة
+    if (!won) {
+        await sleep(400);
+        for (let i = 0; i < gameCards.length; i++) {
+            if (!revealedStates[i]) {
+                revealedStates[i] = true;
+                const el = document.querySelector(`.card[data-index="${i}"]`);
+                if (el) {
+                    el.classList.add('flipped');
+                    await sleep(100);
+                }
+            }
+        }
+        await sleep(800);
+    }
+
+    try {
+        const res = await connectionManager.fetchWithRetry(`${API_BASE}/api/game/finish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: USER_ID,
+                prize_id: currentPrize.prize_id,
+                matched: won,
+                cards_flipped: flipsUsed
+            })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            showResult(data.result, won);
+        } else {
+            showError(data.error || 'خطأ في تسجيل النتيجة');
+        }
+    } catch (e) {
+        showError('خطأ: ' + e.message);
+    }
+
+    await loadUserStatus();
+    busy = false;
+}
+
+// ================================================================
+//                      عرض النتيجة
+// ================================================================
+function showResult(result, won) {
+    const box = document.getElementById('resultBox');
+    box.classList.add('show');
+
+    if (won && result.prize) {
+        box.classList.add('winner');
+        document.getElementById('resultIcon').textContent = result.prize.icon || '🎉';
+        document.getElementById('resultTitle').textContent = '🎉 مبروك! فزت بـ';
+        document.getElementById('resultAmount').textContent = `${result.prize.amount} SYP`;
+        createConfetti(70);
+        soundManager.playWin();
+        showNotification(`🎉 مبروك! فزت بـ ${result.prize.amount} SYP`);
+    } else {
+        box.classList.remove('winner');
+        document.getElementById('resultIcon').textContent = '😅';
+        document.getElementById('resultTitle').textContent = 'حظ أوفر المرة القادمة';
+        document.getElementById('resultAmount').textContent = '';
+        soundManager.playLose();
+    }
+}
+
+// ================================================================
+//                      Confetti
+// ================================================================
+function createConfetti(count = 60) {
+    const container = document.getElementById('confettiContainer');
+    container.innerHTML = '';
+    const colors = ['#FFD700', '#FF6B00', '#FF0000', '#00FF00', '#00BFFF', '#FF00FF', '#FF69B4'];
+    for (let i = 0; i < count; i++) {
+        const el = document.createElement('div');
+        el.className = 'confetti';
+        const size = 6 + Math.random() * 12;
+        el.style.width = size + 'px';
+        el.style.height = size + 'px';
+        el.style.background = colors[Math.floor(Math.random() * colors.length)];
+        el.style.left = Math.random() * 100 + '%';
+        el.style.top = Math.random() * 30 + '%';
+        el.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        el.style.animationDuration = (1.5 + Math.random() * 1.5) + 's';
+        el.style.animationDelay = Math.random() * 0.8 + 's';
+        container.appendChild(el);
+    }
+    setTimeout(() => { container.innerHTML = ''; }, 4000);
+}
+
+// ================================================================
+//                      مساعدات
+// ================================================================
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function showNotification(msg) {
+    const bar = document.getElementById('notificationBar');
+    bar.textContent = msg;
+    bar.classList.add('show');
+    setTimeout(() => bar.classList.remove('show'), 4000);
+}
+
+function showError(msg) {
+    const el = document.getElementById('errorMsg');
+    document.getElementById('errorText').textContent = '❌ ' + msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 5000);
+}
+
+function updateLoading(p) {
+    document.getElementById('loaderProgressBar').style.width = p + '%';
+    document.getElementById('loaderStatusText').textContent = p + '%';
+}
+
+function showLoading(show) {
+    const screen = document.getElementById('loadingScreen');
+    const wrapper = document.getElementById('gameWrapper');
+    if (show) {
+        screen.classList.add('active');
+        wrapper.classList.remove('show');
+    } else {
+        screen.classList.remove('active');
+        wrapper.classList.add('show');
+    }
+}
+
+// ================================================================
+//                      تحميل البيانات
+// ================================================================
+async function loadSettings() {
+    try {
+        const res = await connectionManager.fetchWithRetry(`${API_BASE}/api/admin/settings?admin_id=${ADMIN_ID}`);
+        const data = await res.json();
+        if (data.success) {
+            settingsCache = data.settings;
+            if (settingsCache.bg_image_url)
+                document.getElementById('bgImage').src = settingsCache.bg_image_url;
+            if (settingsCache.loading_image_url)
+                document.getElementById('loadingImage').src = settingsCache.loading_image_url;
+            if (settingsCache.flip_duration)
+                flipDuration = parseInt(settingsCache.flip_duration) || 600;
+            if (settingsCache.max_flips)
+                maxFlips = parseInt(settingsCache.max_flips) || 5;
+            if (settingsCache.banner_text)
+                document.getElementById('gameTitle').textContent = '🎴 ' + settingsCache.banner_text;
+            if (settingsCache.ambience_enabled !== undefined)
+                ambienceEnabled = settingsCache.ambience_enabled === 'true';
+
+            document.getElementById('editBgImage').value = settingsCache.bg_image_url || '';
+            document.getElementById('editLoadingImage').value = settingsCache.loading_image_url || '';
+            document.getElementById('editBackImage').value = settingsCache.back_image_url || '';
+            document.getElementById('editBanner').value = settingsCache.banner_text || 'JAK BOT BARTON';
+            document.getElementById('editFlipDuration').value = settingsCache.flip_duration || 600;
+            document.getElementById('editIntervalHours').value = settingsCache.spin_interval_hours || 24;
+            document.getElementById('editIsActive').checked = settingsCache.is_active === 'true';
+            document.getElementById('editDepositRequired').checked = settingsCache.deposit_required === 'true';
+            document.getElementById('editAmbienceEnabled').checked = settingsCache.ambience_enabled !== 'false';
+            document.getElementById('editDepositMin').value = settingsCache.deposit_min_amount || 1000;
+            document.getElementById('editDepositHours').value = settingsCache.deposit_check_hours || 24;
+            return true;
+        }
+        return false;
+    } catch (e) {
+        console.error('loadSettings error:', e);
+        return false;
+    }
+}
+
+async function loadPrizes() {
+    try {
+        const res = await connectionManager.fetchWithRetry(`${API_BASE}/api/prizes`);
+        const data = await res.json();
+        if (data.success) {
+            prizesCache = data.prizes || [];
+            return prizesCache;
+        }
+        return [];
+    } catch (e) { return []; }
+}
+
+async function loadAdminPrizes() {
+    try {
+        const res = await connectionManager.fetchWithRetry(`${API_BASE}/api/admin/prizes?admin_id=${ADMIN_ID}`);
+        const data = await res.json();
+        return data.success ? data.prizes : [];
+    } catch (e) { return []; }
+}
+
+async function loadUserStatus() {
+    if (!USER_ID) return;
+    try {
+        const res = await connectionManager.fetchWithRetry(`${API_BASE}/api/game/status/${USER_ID}`);
+        const data = await res.json();
+        if (!data.success) return;
+
+        const depositNotice = document.getElementById('depositNotice');
+        if (data.deposit_requirement?.required) {
+            document.getElementById('depositMinAmount').textContent = data.deposit_requirement.min_amount;
+            document.getElementById('depositCheckHours').textContent = data.deposit_requirement.check_hours;
+            depositNotice.classList.add('show');
+            const st = document.getElementById('depositStatus');
+            if (data.deposit_requirement.is_met) {
+                st.innerHTML = `الحالة: <span class="met">✅ مكتمل (${data.deposit_requirement.current_deposits} SYP)</span>`;
+            } else {
+                st.innerHTML = `الحالة: <span class="not-met">❌ غير مكتمل (${data.deposit_requirement.current_deposits}/${data.deposit_requirement.min_amount} SYP)</span>`;
+            }
+        } else {
+            depositNotice.classList.remove('show');
+        }
+
+        const startBtn = document.getElementById('startBtn');
+        if (gameActive) {
+            startBtn.disabled = true;
+            startBtn.textContent = '🎮 اللعبة جارية...';
+        } else if (!data.can_play) {
+            startBtn.disabled = true;
+            if (data.remaining_hours > 0 || data.remaining_minutes > 0) {
+                startBtn.textContent = `⏳ ${data.remaining_hours}h ${data.remaining_minutes}m`;
+            } else if (data.deposit_requirement?.required && !data.deposit_requirement.is_met) {
+                startBtn.textContent = '💰 إيداع مطلوب';
+            } else {
+                startBtn.textContent = '⏳ انتظر...';
+            }
+        } else if (prizesCache.length > 0) {
+            startBtn.disabled = false;
+            startBtn.textContent = '🎮 ابدأ اللعب';
+        } else {
+            startBtn.disabled = true;
+            startBtn.textContent = '⚠️ لا توجد جوائز';
+        }
+    } catch (e) {
+        console.error('loadUserStatus error:', e);
+    }
+}
+
+// ================================================================
+//                      لوحة الإدارة
+// ================================================================
+async function renderAdminPanel() {
+    const panel = document.getElementById('adminPanel');
+    if (USER_ID !== ADMIN_ID) { panel.classList.remove('show'); return; }
+    panel.classList.add('show');
+
+    const prizes = await loadAdminPrizes();
+    const list = document.getElementById('prizesList');
+    const summary = document.getElementById('probSummary');
+
+    // إحصاء النسب
+    const totalProb = prizes.reduce((s, p) => s + parseFloat(p.probability || 0), 0);
+    const loseChance = Math.max(0, 100 - totalProb);
+    const winChance = Math.min(100, totalProb);
+
+    summary.innerHTML = `
+        📊 <strong>مجموع النسب:</strong> ${totalProb.toFixed(1)}%
+        <br>
+        🎯 <strong>فرصة الفوز:</strong> ${winChance.toFixed(1)}%
+        &nbsp;|&nbsp;
+        😅 <strong class="warn">فرصة "حظ أوفر":</strong> ${loseChance.toFixed(1)}%
+        ${totalProb > 100 ? '<br><span class="danger">⚠️ مجموع النسب > 100 — ستُطبَّع تلقائياً</span>' : ''}
+        ${totalProb === 0 ? '<br><span class="danger">⚠️ كل الجوائز 0% — اللعبة معطلة</span>' : ''}
+    `;
+
+    if (!prizes || prizes.length === 0) {
+        list.innerHTML = `<div style="color:#555;text-align:center;padding:16px;font-size:13px;">📭 لا توجد جوائز</div>`;
+        return;
+    }
+
+    list.innerHTML = prizes.map(p => `
+        <div class="prize-item" data-id="${p.id}">
+            <div class="prize-row">
+                <div class="prize-preview" style="${p.image_url ? `background-image:url('${p.image_url}')` : ''}">${p.image_url ? '' : (p.icon || '🎴')}</div>
+                <input type="text" class="p-name" value="${(p.name||'').replace(/"/g,'&quot;')}" placeholder="الاسم" style="flex:1;">
+                <input type="number" class="p-amount" value="${p.amount||0}" placeholder="المبلغ" style="max-width:70px;">
+                <input type="number" class="p-prob" value="${p.probability||0}" min="0" max="100" step="0.1" placeholder="%" style="max-width:55px;" title="0 = لن تُختار كجائزة فائزة">
+                <button class="btn-save p-save">💾</button>
+                <button class="btn-delete p-del">✕</button>
+            </div>
+            <div class="prize-row">
+                <input type="text" class="p-desc" value="${(p.description||'').replace(/"/g,'&quot;')}" placeholder="الوصف" style="flex:2;">
+                <input type="text" class="p-icon" value="${p.icon||''}" placeholder="🎴" style="max-width:50px;">
+            </div>
+            <div class="prize-row">
+                <input type="text" class="p-img" value="${p.image_url||''}" placeholder="رابط صورة الرمز" style="flex:1;">
+                <input type="color" class="p-c1" value="${p.color||'#1a1a2e'}" style="max-width:38px;height:30px;">
+                <input type="color" class="p-c2" value="${p.color2||'#16213e'}" style="max-width:38px;height:30px;">
+            </div>
+        </div>
+    `).join('');
+
+    list.querySelectorAll('.prize-item').forEach(item => {
+        const id = parseInt(item.dataset.id);
+
+        item.querySelector('.p-save').addEventListener('click', async function() {
+            const data = {
+                name: item.querySelector('.p-name').value.trim(),
+                description: item.querySelector('.p-desc').value.trim(),
+                amount: parseFloat(item.querySelector('.p-amount').value) || 0,
+                probability: parseFloat(item.querySelector('.p-prob').value) || 0,
+                icon: item.querySelector('.p-icon').value.trim() || '🎴',
+                image_url: item.querySelector('.p-img').value.trim() || null,
+                color: item.querySelector('.p-c1').value,
+                color2: item.querySelector('.p-c2').value
+            };
+            const ok = await updatePrize(id, data);
+            if (ok) {
+                showNotification('✅ تم الحفظ');
+                await refreshAll();
+            }
+        });
+
+        item.querySelector('.p-del').addEventListener('click', async function() {
+            if (!confirm('حذف هذه الجائزة؟')) return;
+            const ok = await deletePrize(id);
+            if (ok) { showNotification('✅ تم الحذف'); await refreshAll(); }
+        });
+    });
+}
+
+async function updatePrize(id, data) {
+    try {
+        const res = await connectionManager.fetchWithRetry(`${API_BASE}/api/admin/prizes/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ admin_id: ADMIN_ID, ...data })
+        });
+        const r = await res.json();
+        if (!res.ok) throw new Error(r.error);
+        return r.success;
+    } catch (e) { showError('فشل: ' + e.message); return false; }
+}
+
+async function deletePrize(id) {
+    try {
+        const res = await connectionManager.fetchWithRetry(`${API_BASE}/api/admin/prizes/${id}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ admin_id: ADMIN_ID })
+        });
+        const r = await res.json();
+        return r.success;
+    } catch (e) { showError('فشل: ' + e.message); return false; }
+}
+
+async function addPrize() {
+    const name = document.getElementById('newName').value.trim();
+    if (!name) { showError('الاسم مطلوب'); return; }
+    try {
+        const res = await connectionManager.fetchWithRetry(`${API_BASE}/api/admin/prizes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                admin_id: ADMIN_ID,
+                name,
+                description: document.getElementById('newDesc').value.trim(),
+                amount: parseFloat(document.getElementById('newAmount').value) || 0,
+                probability: parseFloat(document.getElementById('newProb').value) || 0,
+                icon: document.getElementById('newIcon').value.trim() || '🎴',
+                image_url: document.getElementById('newImgUrl').value.trim() || null,
+                color: document.getElementById('newColor').value,
+                color2: document.getElementById('newColor2').value
+            })
+        });
+        const r = await res.json();
+        if (!res.ok) throw new Error(r.error);
+        showNotification('✅ تمت الإضافة');
+        ['newName','newDesc','newAmount','newProb','newIcon','newImgUrl'].forEach(id => document.getElementById(id).value = '');
+        await refreshAll();
+    } catch (e) { showError('فشل: ' + e.message); }
+}
+
+async function saveSetting(key, value) {
+    try {
+        const res = await connectionManager.fetchWithRetry(`${API_BASE}/api/admin/setting`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ admin_id: ADMIN_ID, key, value: String(value) })
+        });
+        const r = await res.json();
+        return r.success;
+    } catch (e) { showError('فشل: ' + e.message); return false; }
+}
+
+// ================================================================
+//                      تحديث الكل
+// ================================================================
+async function refreshAll() {
+    await loadSettings();
+    await loadPrizes();
+    await loadUserStatus();
+    await renderAdminPanel();
+    if (!gameActive) renderPlaceholderCards();
+}
+
+// ================================================================
+//                      الأحداث
+// ================================================================
+document.querySelectorAll('.btn-save[data-setting]').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const key = this.dataset.setting;
+        const fieldId = this.dataset.field;
+        const type = this.dataset.type || 'text';
+        const value = type === 'checkbox'
+            ? document.getElementById(fieldId).checked
+            : document.getElementById(fieldId).value;
+        const orig = this.textContent;
+        this.textContent = '⏳'; this.disabled = true;
+        const ok = await saveSetting(key, value);
+        this.textContent = ok ? '✅' : '❌';
+        this.classList.toggle('saved', ok);
+        if (ok) {
+            // تحديث فوري للمتغيرات
+            if (key === 'ambience_enabled') {
+                ambienceEnabled = value === true || value === 'true';
+                if (!ambienceEnabled) backgroundAmbience.stop();
+            }
+            await refreshAll();
+        }
+        setTimeout(() => { this.textContent = orig; this.disabled = false; this.classList.remove('saved'); }, 2000);
+    });
+});
+
+document.getElementById('addBtn').addEventListener('click', addPrize);
+
+document.getElementById('refreshAllBtn').addEventListener('click', async () => {
+    await refreshAll();
+    showNotification('🔄 تم التحديث');
+});
+
+document.getElementById('resetPrizesBtn').addEventListener('click', async () => {
+    if (!confirm('إعادة تعيين الجوائز للافتراضي؟')) return;
+    try {
+        const res = await connectionManager.fetchWithRetry(`${API_BASE}/api/admin/seed-prizes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ admin_id: ADMIN_ID })
+        });
+        const r = await res.json();
+        if (r.success) { showNotification('✅ تم'); await refreshAll(); }
+    } catch (e) { showError(e.message); }
+});
+
+document.getElementById('resetGamesBtn').addEventListener('click', async () => {
+    if (!confirm('مسح كل سجلات الألعاب؟')) return;
+    try {
+        const res = await connectionManager.fetchWithRetry(`${API_BASE}/api/admin/reset-games`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ admin_id: ADMIN_ID })
+        });
+        const r = await res.json();
+        if (r.success) { showNotification(`✅ حُذف ${r.deleted_count}`); await loadUserStatus(); }
+    } catch (e) { showError(e.message); }
+});
+
+document.getElementById('startBtn').addEventListener('click', startGame);
+
+// ================================================================
+//                      التهيئة
+// ================================================================
+async function init() {
+    USER_ID = getUserId();
+    if (!USER_ID) {
+        document.getElementById('errorContainer').classList.add('show');
+        return;
+    }
+
+    showLoading(true);
+    updateLoading(0);
+
+    try {
+        let progress = 0;
+        const interval = setInterval(() => {
+            progress += Math.random() * 12;
+            if (progress > 85) progress = 85;
+            updateLoading(Math.round(progress));
+        }, 150);
+
+        try {
+            await connectionManager.fetchWithRetry(`${API_BASE}/api/status`);
+        } catch (e) {
+            clearInterval(interval);
+            updateLoading(100);
+            await sleep(400);
+            showLoading(false);
+            showError('⚠️ لا يمكن الاتصال بالخادم');
+            return;
+        }
+
+        updateLoading(30); await sleep(300);
+        await loadSettings();
+        updateLoading(55); await sleep(300);
+
+        await loadPrizes();
+        renderPlaceholderCards();
+        updateLoading(75); await sleep(300);
+
+        await loadUserStatus();
+        updateLoading(90); await sleep(300);
+
+        await renderAdminPanel();
+        updateLoading(100); await sleep(500);
+
+        clearInterval(interval);
+        soundManager.init();
+    } catch (e) {
+        console.error('init error:', e);
+        updateLoading(100);
+        await sleep(500);
+        showError('فشل التحميل: ' + e.message);
+    }
+
+    showLoading(false);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>
